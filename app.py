@@ -1,0 +1,120 @@
+import streamlit as st
+from docx import Document
+from io import BytesIO
+import datetime
+
+# --- ตั้งค่าหน้าเว็บ ---
+st.set_page_config(page_title="โปรแกรมพิมพ์หนังสือราชการ", page_icon="🇹🇭")
+
+st.title("🇹🇭 โปรแกรมสร้างหนังสือราชการอัตโนมัติ")
+st.write("สร้างเอกสารราชการถูกต้องตามระเบียบ ใช้งานง่ายบน iPad")
+
+# --- เมนูเลือกประเภทหนังสือ ---
+doc_type = st.radio(
+    "📂 เลือกประเภทหนังสือที่ต้องการสร้าง:",
+    ("บันทึกข้อความ", "คำสั่ง"),
+    horizontal=True
+)
+
+# --- ตัวแปรสำหรับเก็บข้อมูล (Dictionary) ---
+data = {}
+template_file = ""
+output_name = ""
+
+# --- กรณีเลือก: บันทึกข้อความ ---
+if doc_type == "บันทึกข้อความ":
+    template_file = "template_memo.docx"
+    st.subheader("📝 ข้อมูลบันทึกข้อความ")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        dept = st.text_input("ส่วนราชการ", placeholder="เช่น โรงเรียนบ้านหนองนา...")
+        doc_no = st.text_input("ที่ (เลขหนังสือ)", placeholder="เช่น ศธ 0401/...")
+    with col2:
+        date_str = st.text_input("วันที่", value=datetime.datetime.now().strftime("%d %B %Y"))
+        
+    subject = st.text_input("เรื่อง")
+    to_who = st.text_input("เรียน (ถึงใคร)")
+    body = st.text_area("เนื้อหาข้อความ", height=200)
+    signer = st.text_input("ลงชื่อ (ผู้ลงนาม)")
+
+    # เตรียมข้อมูลใส่ Dictionary ให้ตรงกับ template_memo.docx
+    data = {
+        '{{DEPT}}': dept,
+        '{{NO}}': doc_no,
+        '{{DATE}}': date_str,
+        '{{SUBJECT}}': subject,
+        '{{TO}}': to_who,
+        '{{BODY}}': body,
+        '{{SIGNER}}': signer
+    }
+    output_name = f"บันทึกข้อความ_{subject}"
+
+# --- กรณีเลือก: คำสั่ง ---
+elif doc_type == "คำสั่ง":
+    template_file = "template_command.docx"
+    st.subheader("⚖️ ข้อมูลคำสั่ง")
+
+    org_name = st.text_input("ชื่อหน่วยงาน (เจ้าของคำสั่ง)", placeholder="เช่น โรงเรียน...")
+    cmd_no = st.text_input("คำสั่งที่ (เลขคำสั่ง)", placeholder="เช่น ๑/๒๕๖๗")
+    subject = st.text_input("เรื่อง")
+    body = st.text_area("เนื้อหาคำสั่ง (ความว่า...)", height=200)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        date_str = st.text_input("สั่ง ณ วันที่", value=datetime.datetime.now().strftime("%d %B %Y"))
+    with col2:
+        signer = st.text_input("ลงชื่อ (ผู้ลงนาม)")
+        position = st.text_input("ตำแหน่ง")
+
+    # เตรียมข้อมูลใส่ Dictionary ให้ตรงกับ template_command.docx
+    data = {
+        '{{ORG_NAME}}': org_name,
+        '{{CMD_NO}}': cmd_no,
+        '{{SUBJECT}}': subject,
+        '{{BODY}}': body,
+        '{{DATE}}': date_str,
+        '{{SIGNER}}': signer,
+        '{{POSITION}}': position
+    }
+    output_name = f"คำสั่ง_{subject}"
+
+# --- ฟังก์ชันสร้างเอกสาร (ใช้ร่วมกันทั้ง 2 แบบ) ---
+def generate_doc(template_path, replace_data):
+    try:
+        doc = Document(template_path)
+        # วนลูปแทนที่คำ
+        for paragraph in doc.paragraphs:
+            for key, value in replace_data.items():
+                if key in paragraph.text:
+                    # ใช้เทคนิคนี้เพื่อให้ Format (ตัวหนา/ฟอนต์) ไม่เพี้ยน
+                    for run in paragraph.runs:
+                         if key in run.text:
+                            run.text = run.text.replace(key, str(value))
+        
+        # บันทึกลง Memory
+        bio = BytesIO()
+        doc.save(bio)
+        return bio
+    except Exception as e:
+        return None
+
+# --- ปุ่มกดสร้างเอกสาร ---
+st.divider()
+if st.button('✨ สร้างเอกสาร Word', type="primary", use_container_width=True):
+    if not subject:
+        st.error("⚠️ กรุณากรอก 'เรื่อง' ก่อนกดสร้างเอกสาร")
+    else:
+        # เรียกฟังก์ชัน
+        result_file = generate_doc(template_file, data)
+        
+        if result_file:
+            st.success("✅ สร้างเสร็จเรียบร้อย!")
+            st.download_button(
+                label="📥 ดาวน์โหลดไฟล์ Word (.docx)",
+                data=result_file.getvalue(),
+                file_name=f"{output_name}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        else:
+            st.error(f"❌ หาไฟล์ {template_file} ไม่เจอ! กรุณาเช็คว่าอัปโหลดไฟล์ Word ขึ้นไปหรือยัง")
